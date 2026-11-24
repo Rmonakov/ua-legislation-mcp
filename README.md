@@ -15,6 +15,8 @@ MCP-сервер, який дає ШІ-асистентам (Claude, ChatGPT, Cu
 3. **Навичка:** **Customize → Skills** → **+** → **Create skill** → **Upload a skill** → виберіть `npa-ofitsiini-dzherela.zip`. Має бути ввімкнено «Code execution and file creation» (у новому вигляді — «Create and edit files») у **Settings → Capabilities**.
 4. Перевірте: у новому чаті попросіть, наприклад, «Знайди Закон про стандартизацію і покажи статтю 23 з датою редакції».
 
+**Windows: покрокова інструкція** для Claude Desktop і ChatGPT, з усіма командами й розв'язанням типових проблем — [docs/windows.md](docs/windows.md).
+
 Розширення працює, поки застосунок Claude відкритий на комп'ютері з українською IP-адресою (див. нижче). Інші клієнти (ChatGPT, Claude Code, Cursor, VS Code, Codex, Gemini CLI) — у розділі [Встановлення](#встановлення).
 
 **Поділитися з колегами:** надішліть посилання на репозиторій (https://github.com/Rmonakov/ua-legislation-mcp) або одразу на [останній реліз](https://github.com/Rmonakov/ua-legislation-mcp/releases/latest).
@@ -143,6 +145,8 @@ args = ["-y", "github:Rmonakov/ua-legislation-mcp"]
 Локальний режим (stdio): команда `npx`, аргументи `-y github:Rmonakov/ua-legislation-mcp`.
 
 ### ChatGPT, claude.ai та інші віддалені клієнти (HTTP)
+
+> На Windows дивіться [покрокову інструкцію](docs/windows.md#частина-2-chatgpt): там усі команди для PowerShell, перевірки й типові проблеми.
 
 ChatGPT і веб-версія Claude підключаються лише до MCP-сервера за публічною адресою HTTPS. Тому сервер запускається в HTTP-режимі на комп'ютері чи сервері в Україні, а назовні його відкриває тунель.
 

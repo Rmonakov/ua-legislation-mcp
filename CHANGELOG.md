@@ -4,6 +4,7 @@
 
 - Навичка `npa-ofitsiini-dzherela` тепер однаково підходить для Claude і ChatGPT: нагадування про запуск сервера описує обидва варіанти.
 - README: для PowerShell у Windows — `npx.cmd` замість `npx`; встановлення навички в ChatGPT.
+- Покрокова інструкція для Windows: [docs/windows.md](docs/windows.md) — Claude Desktop, ChatGPT (сервер + тунель Cloudflare), інші програми, типові проблеми.
 - HTTP-режим: якщо адресу MCP відкрити в браузері, сервер пояснює, що її треба вставити в клієнт MCP.
 
 ## 0.1.1 — 2026-11-24
