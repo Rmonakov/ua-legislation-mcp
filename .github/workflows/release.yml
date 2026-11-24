@@ -1,0 +1,27 @@
+name: release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  mcpb:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm ci --omit=dev
+      - run: npx -y @anthropic-ai/mcpb pack . "dist/ua-legislation-mcp-${GITHUB_REF_NAME#v}.mcpb"
+      - name: Пакет навички для Claude (тека навички — верхній рівень архіву)
+        run: cd skills && zip -r ../dist/npa-ofitsiini-dzherela.zip npa-ofitsiini-dzherela
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.mcpb
+            dist/*.zip
+          generate_release_notes: true

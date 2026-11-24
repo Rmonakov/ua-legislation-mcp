@@ -1,0 +1,54 @@
+{
+  "name": "ua-legislation-mcp",
+  "version": "0.1.1",
+  "description": "MCP-сервер для офіційної бази «Законодавство України» через портал відкритих даних Верховної Ради (data.rada.gov.ua). Працює з Claude, ChatGPT, Cursor, VS Code, Codex, Gemini CLI.",
+  "author": "Rmonakov",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Rmonakov/ua-legislation-mcp.git"
+  },
+  "homepage": "https://github.com/Rmonakov/ua-legislation-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/Rmonakov/ua-legislation-mcp/issues"
+  },
+  "type": "module",
+  "bin": {
+    "ua-legislation-mcp": "bin/cli.js"
+  },
+  "exports": {
+    ".": "./src/server.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.17"
+  },
+  "scripts": {
+    "start": "node bin/cli.js",
+    "start:http": "node bin/cli.js --http",
+    "check": "node bin/cli.js --check",
+    "test": "node --test",
+    "pack:mcpb": "mcpb pack . dist/ua-legislation-mcp.mcpb"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "ukraine",
+    "legislation",
+    "законодавство",
+    "верховна-рада",
+    "нпа",
+    "open-data",
+    "claude",
+    "chatgpt"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^4.6.7"
+  }
+}

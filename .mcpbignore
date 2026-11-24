@@ -1,0 +1,10 @@
+/test/
+/.github/
+/dist/
+/docs/
+/skills/
+/CHANGELOG.md
+/CONTRIBUTING.md
+/.gitignore
+/.mcpbignore
+/package-lock.json
