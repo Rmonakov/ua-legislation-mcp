@@ -210,6 +210,8 @@ npm run start:http  # HTTP-режим локально
 npx @anthropic-ai/mcpb pack . dist/ua-legislation-mcp.mcpb   # пакет для Claude Desktop
 ```
 
+Випуск нової версії: оновіть номер версії в `package.json`, `manifest.json` і `src/config.js`, допишіть `CHANGELOG.md`, а потім на GitHub створіть реліз (**Releases → Draft a new release**, тег `vX.Y.Z`, **Publish release**). GitHub Actions прожене тести й додасть до релізу файли `ua-legislation-mcp-X.Y.Z.mcpb` і `npa-ofitsiini-dzherela.zip`.
+
 Структура: `src/rada-client.js` — клієнт порталу (черга, паузи, ліміти, кеш); `src/index-store.js` — локальний пошук за офіційним переліком документів; `src/text.js` — статті, пошук, зміст; `src/server.js` — інструменти MCP; `bin/cli.js` — запуск у режимах stdio та HTTP. Тести працюють на імітації порталу з вигаданими даними й до справжнього порталу не звертаються.
 
 Пропозиції й виправлення — через issues і pull requests.

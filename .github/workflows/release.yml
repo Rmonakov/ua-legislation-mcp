@@ -1,7 +1,9 @@
 name: release
+# Запускається, коли на GitHub публікують реліз (Releases → Draft a new release → тег vX.Y.Z → Publish).
+# Збирає розширення .mcpb і архів навички та додає їх до цього релізу.
 on:
-  push:
-    tags: ['v*']
+  release:
+    types: [published]
 permissions:
   contents: write
 jobs:
