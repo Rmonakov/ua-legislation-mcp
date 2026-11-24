@@ -1,6 +1,6 @@
 {
   "name": "ua-legislation-mcp",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "MCP-сервер для офіційної бази «Законодавство України» через портал відкритих даних Верховної Ради (data.rada.gov.ua). Працює з Claude, ChatGPT, Cursor, VS Code, Codex, Gemini CLI.",
   "author": "Rmonakov",
   "repository": {

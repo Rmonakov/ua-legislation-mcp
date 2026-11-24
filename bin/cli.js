@@ -144,7 +144,14 @@ async function runHttp() {
       return;
     }
     if (req.method !== 'POST') {
-      sendJson(res, 405, { jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed (stateless server: use POST)' }, id: null });
+      sendJson(res, 405, {
+        jsonrpc: '2.0',
+        error: {
+          code: -32000,
+          message: 'MCP-сервер працює. Цю адресу вставляють у клієнт MCP (ChatGPT, claude.ai тощо), а не відкривають у браузері. / MCP server is running; add this URL to an MCP client (POST only).',
+        },
+        id: null,
+      });
       return;
     }
     let body;

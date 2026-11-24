@@ -43,7 +43,7 @@ MCP-сервер, який дає ШІ-асистентам (Claude, ChatGPT, Cu
 - закінчувати кожен аналіз чи проєкт реєстром джерел;
 - повторно перевіряти документи за цим реєстром.
 
-Готовий архів для завантаження — `npa-ofitsiini-dzherela.zip` у кожному [релізі](https://github.com/Rmonakov/ua-legislation-mcp/releases/latest). Встановлення: **Customize → Skills → + → Create skill → Upload a skill**. Для ChatGPT та інших асистентів текст `SKILL.md` можна вставити в інструкції проєкту; основні правила сервер і так передає асистенту.
+Готовий архів для завантаження — `npa-ofitsiini-dzherela.zip` у кожному [релізі](https://github.com/Rmonakov/ua-legislation-mcp/releases/latest). Встановлення: **Customize → Skills → + → Create skill → Upload a skill**. **ChatGPT** підтримує той самий формат навичок (Agent Skills): **Plugins → Skills → Create → Upload from your computer** і той самий `npa-ofitsiini-dzherela.zip` (власні навички доступні на тарифах Business, Enterprise, Healthcare, Edu). Якщо вкладки Skills немає, вставте текст [`SKILL.md`](skills/npa-ofitsiini-dzherela/SKILL.md) в інструкції проєкту ChatGPT. Основні правила сервер і так передає асистенту.
 
 ## Важливо: запускайте сервер з українською IP-адресою
 

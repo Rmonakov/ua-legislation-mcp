@@ -117,6 +117,9 @@ test('HTTP (для ChatGPT): секретний шлях, search/fetch, стан
     assert.equal(health.ok, true);
     const wrong = await fetch(`http://127.0.0.1:${port}/mcp`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
     assert.equal(wrong.status, 404);
+    const get = await fetch(`http://127.0.0.1:${port}/mcp/s3cr3t`);
+    assert.equal(get.status, 405);
+    assert.match((await get.json()).error.message, /MCP-сервер працює/);
 
     const client = new Client({ name: 'test-http', version: '1.0.0' });
     await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp/s3cr3t`)));

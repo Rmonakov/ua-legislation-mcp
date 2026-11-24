@@ -11,7 +11,7 @@ export const USER_AGENT = 'OpenData';
 export const MIN_PACE_SECONDS = 5;
 
 export const PACKAGE_NAME = 'ua-legislation-mcp';
-export const VERSION = '0.1.1';
+export const VERSION = '0.1.2';
 
 /**
  * Порожні значення і незамінені шаблони на кшталт «${user_config.cache_dir}»
