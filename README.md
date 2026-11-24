@@ -53,13 +53,15 @@ MCP-сервер, який дає ШІ-асистентам (Claude, ChatGPT, Cu
 npx -y github:Rmonakov/ua-legislation-mcp --check
 ```
 
-Якщо бачите `OK: «Конституція України» — Чинний…`, усе гаразд.
+Якщо бачите `OK: «Конституція України» — Чинний…`, усе гаразд. У PowerShell на Windows пишіть `npx.cmd` замість `npx`.
 
 Потрібен [Node.js](https://nodejs.org) 18.17 або новіший. Claude Desktop має власний Node.js, тож для розширення `.mcpb` нічого додатково ставити не треба.
 
 ## Встановлення
 
 > Команди нижче встановлюють сервер прямо з GitHub (`github:Rmonakov/ua-legislation-mcp`), тож на комп'ютері мають бути [Node.js](https://nodejs.org) 18.17+ і [git](https://git-scm.com). Для розширення `.mcpb` у Claude Desktop нічого з цього не потрібно.
+>
+> **Windows:** якщо PowerShell пише `running scripts is disabled on this system`, пишіть `npx.cmd` замість `npx` (наприклад, `npx.cmd -y github:Rmonakov/ua-legislation-mcp --check`). Змінювати налаштування безпеки для цього не потрібно.
 
 ### Claude Desktop (найпростіше)
 
