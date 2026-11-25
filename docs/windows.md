@@ -219,13 +219,27 @@ claude mcp add ua-legislation -- cmd /c npx -y github:Rmonakov/ua-legislation-mc
 }
 ```
 
-**Codex CLI** (`%USERPROFILE%\.codex\config.toml`):
+**Codex** (застосунок, CLI, розширення для IDE) — сервер у `%USERPROFILE%\.codex\config.toml`:
 
 ```toml
 [mcp_servers.ua-legislation]
 command = "cmd"
 args = ["/c", "npx", "-y", "github:Rmonakov/ua-legislation-mcp"]
+startup_timeout_sec = 60
+tool_timeout_sec = 180
 ```
+
+Збільшені тайм-аути потрібні тому, що перший запуск через npx і перший пошук (завантаження переліку документів) тривають до хвилини. Перед першим запуском Codex варто один раз виконати в PowerShell `npx.cmd -y github:Rmonakov/ua-legislation-mcp --check`.
+
+**Навичка в Codex.** Вбудований `$skill-installer` може не спрацювати: пісочниця Codex за замовчуванням не має доступу до інтернету. Простіше встановити навичку вручну — це тека з файлом `SKILL.md` у `%USERPROFILE%\.agents\skills`. У PowerShell:
+
+```powershell
+$d = "$env:USERPROFILE\.agents\skills\npa-ofitsiini-dzherela"
+New-Item -ItemType Directory -Force -Path $d | Out-Null
+Invoke-WebRequest "https://raw.githubusercontent.com/Rmonakov/ua-legislation-mcp/main/skills/npa-ofitsiini-dzherela/SKILL.md" -OutFile "$d\SKILL.md"
+```
+
+Перезапустіть Codex і перевірте: введіть `$` у полі повідомлення — у списку має бути `npa-ofitsiini-dzherela`. Якщо навички немає, ваша версія Codex може читати стару теку `%USERPROFILE%\.codex\skills` — скопіюйте теку навички туди.
 
 ---
 
@@ -241,6 +255,7 @@ args = ["/c", "npx", "-y", "github:Rmonakov/ua-legislation-mcp"]
 | У браузері «MCP-сервер працює…» або «Method not allowed» | Усе гаразд: цю адресу вставляють у ChatGPT, а не відкривають у браузері. |
 | ChatGPT не може підключитися | Перевірте, що обидва вікна відкриті; що `…/health` відкривається; що адреса закінчується на `/mcp/<секрет>`; що після перезапуску ви оновили адресу в плагіні. |
 | `EADDRINUSE` (порт зайнятий) | Візьміть інший порт, наприклад `--port 8788`, і той самий порт у команді тунелю: `--url http://localhost:8788`. |
+| Codex: `$skill-installer` пише про мережеві обмеження | Встановіть навичку вручну (розділ «Навичка в Codex» вище). |
 | Розширення в Claude встановилося, але інструментів немає | Перезапустіть Claude Desktop і перевірте, що розширення ввімкнене в **Extensions**. |
 
 Не знайшли свого випадку? Створіть [issue](https://github.com/Rmonakov/ua-legislation-mcp/issues) і додайте знімок екрана.

@@ -118,15 +118,19 @@ claude mcp add ua-legislation -- npx -y github:Rmonakov/ua-legislation-mcp
 }
 ```
 
-### OpenAI Codex CLI
+### OpenAI Codex
 
-`~/.codex/config.toml`:
+`~/.codex/config.toml` (у Windows — `command = "cmd"`, `args = ["/c", "npx", …]`, див. [інструкцію для Windows](docs/windows.md#частина-3-інші-програми)):
 
 ```toml
 [mcp_servers.ua-legislation]
 command = "npx"
 args = ["-y", "github:Rmonakov/ua-legislation-mcp"]
+startup_timeout_sec = 60
+tool_timeout_sec = 180
 ```
+
+Навичка для Codex: покладіть теку `skills/npa-ofitsiini-dzherela` у `~/.agents/skills/` (вбудований `$skill-installer` може не мати доступу до мережі з пісочниці Codex).
 
 ### Gemini CLI
 
