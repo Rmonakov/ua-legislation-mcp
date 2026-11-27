@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -11,7 +12,14 @@ export const USER_AGENT = 'OpenData';
 export const MIN_PACE_SECONDS = 5;
 
 export const PACKAGE_NAME = 'ua-legislation-mcp';
-export const VERSION = '0.1.2';
+/** Версія — лише в package.json (manifest.json оновлює scripts/sync-version.mjs). */
+export const VERSION = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version || '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+})();
 
 /**
  * Порожні значення і незамінені шаблони на кшталт «${user_config.cache_dir}»

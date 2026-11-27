@@ -6,7 +6,7 @@ import path from 'node:path';
 import { loadConfig } from '../src/config.js';
 import { RadaClient, RadaError } from '../src/rada-client.js';
 import { IndexStore } from '../src/index-store.js';
-import { startFakeRada } from './fake-rada.js';
+import { startFakeRada, R_TSV, DOC_TXT } from './fake-rada.js';
 
 let fake;
 let tmp;
@@ -103,6 +103,7 @@ test('стрічка оновлень і довідники', async () => {
   const dicts = await client.getDicts();
   assert.equal(dicts.types.get(1), 'Закон');
   assert.equal(dicts.organs.get(2), 'Кабінет Міністрів України');
+  assert.equal(dicts.pubs.get(19), 'Офіційний вісник України');
 });
 
 test('офіційний пошук за назвою: однозначний збіг і кандидати', async () => {
@@ -166,4 +167,134 @@ test('після невдалого завантаження індексу по
   assert.equal(await idx.ensure({ waitMs: 1000 }), 'unavailable');
   assert.equal(calls, 1);
   assert.match(idx.lastError.message, /boom/);
+});
+
+const ago = (ms) => new Date(Date.now() - ms);
+function resetFake() {
+  fake.state.rTsv = R_TSV;
+  fake.state.docTxt = DOC_TXT;
+  fake.state.rTsvCharset = 'utf-8';
+  fake.state.etag = true;
+  fake.state.lastModified = new Date('2026-07-27T07:57:35Z');
+}
+
+test('умовні запити: ETag і Last-Modified зберігаються, на 304 береться кеш; User-Agent — OpenData', async () => {
+  resetFake();
+  const { cfg, client } = mk();
+  const dump = path.join(cfg.cacheDir, 'index', 'doc.txt');
+  const n0 = fake.requests.length;
+  const first = await client.downloadDump(dump);
+  assert.equal(first.notModified, false);
+  const meta = JSON.parse(fs.readFileSync(`${dump}.meta.json`, 'utf8'));
+  assert.match(meta.etag, /^"[0-9a-f]+"$/);
+  assert.equal(meta.lastModified, fake.state.lastModified.toUTCString());
+  assert.match(meta.contentType, /widows-1251/);
+  const second = await client.downloadDump(dump);
+  assert.equal(second.notModified, true);
+  assert.ok(second.body.equals(first.body), 'на 304 — збережена копія');
+  const reqs = fake.requests.slice(n0);
+  assert.deepEqual(reqs.map((r) => r.path), ['/ogd/zak/laws/data/csv/doc.txt', '/ogd/zak/laws/data/csv/doc.txt']);
+  assert.equal(reqs[0].inm, undefined, 'перший запит — звичайний');
+  assert.equal(reqs[1].inm, meta.etag);
+  assert.equal(reqs[1].ims, meta.lastModified);
+  assert.ok(reqs.every((r) => r.ua === 'OpenData'));
+
+  // Довідник і стрічка оновлень: у межах строку — з кешу, без запитів.
+  await client.getDict('typ');
+  await client.getUpdates();
+  const n1 = fake.requests.length;
+  client._memo.clear();
+  await client.getDict('typ');
+  await client.getUpdates();
+  assert.equal(fake.requests.length, n1);
+  // Строк минув — умовний запит, 304, дані з кешу.
+  cfg.dictTtlMs = 0;
+  cfg.updatesTtlMs = 0;
+  client._memo.clear();
+  assert.equal((await client.getDict('typ')).get(1), 'Закон');
+  assert.equal((await client.getUpdates())[0].nreg, '1315-18');
+  const cond = fake.requests.slice(n1);
+  assert.deepEqual(cond.map((r) => r.path), ['/ogd/zak/laws/data/csv/typ.txt', '/laws/main/r.tsv']);
+  assert.ok(cond.every((r) => r.inm && r.ims && r.ua === 'OpenData'));
+});
+
+test('після 304 строк кешу подовжується; змінений файл завантажується заново', async () => {
+  resetFake();
+  const { cfg, client } = mk();
+  const file = path.join(cfg.cacheDir, 'updates.tsv');
+  await client.getUpdates();
+  fs.utimesSync(file, ago(3600_000), ago(3600_000)); // застарів
+  const n0 = fake.requests.length;
+  await client.getUpdates(); // умовний запит → 304
+  await client.getUpdates(); // строк подовжено → з кешу
+  assert.equal(fake.requests.length - n0, 1);
+  try {
+    fake.state.rTsv = R_TSV.replace('Про тестовий курс', 'Про новий тестовий курс');
+    fake.state.lastModified = new Date(fake.state.lastModified.getTime() + 60_000);
+    fs.utimesSync(file, ago(3600_000), ago(3600_000));
+    const rows = await client.getUpdates();
+    assert.equal(rows[3].title, 'Про новий тестовий курс');
+    const meta = JSON.parse(fs.readFileSync(`${file}.meta.json`, 'utf8'));
+    assert.equal(meta.lastModified, fake.state.lastModified.toUTCString());
+  } finally {
+    resetFake();
+  }
+});
+
+test('портал без ETag: умовний запит лише з If-Modified-Since', async () => {
+  resetFake();
+  fake.state.etag = false;
+  try {
+    const { cfg, client } = mk();
+    await client.getDict('organs');
+    const meta = JSON.parse(fs.readFileSync(path.join(cfg.cacheDir, 'dicts', 'organs.txt.meta.json'), 'utf8'));
+    assert.equal(meta.etag, null);
+    cfg.dictTtlMs = 0;
+    client._memo.clear();
+    const n0 = fake.requests.length;
+    assert.equal((await client.getDict('organs')).get(1), 'Верховна Рада України');
+    const [r] = fake.requests.slice(n0);
+    assert.equal(r.inm, undefined);
+    assert.equal(r.ims, fake.state.lastModified.toUTCString());
+  } finally {
+    resetFake();
+  }
+});
+
+test('стрічка оновлень: кодування за Content-Type (портал пише «charset=widows-1251»), і з кешу теж', async () => {
+  resetFake();
+  fake.state.rTsvCharset = 'widows-1251';
+  try {
+    const { cfg, client } = mk();
+    const rows = await client.getUpdates();
+    assert.equal(rows[0].title, 'Про стандартизацію');
+    assert.equal(rows[0].card, 'Верховна Рада України; Закон від 05.06.2014 № 1315-VII');
+    const n0 = fake.requests.length;
+    assert.equal((await client.getUpdates())[1].title, 'Про доступ до публічної інформації', 'з кешу — за збереженим Content-Type');
+    assert.equal(fake.requests.length, n0);
+    // Кеш попередньої версії (без *.meta.json) — запасна евристика.
+    fs.unlinkSync(path.join(cfg.cacheDir, 'updates.tsv.meta.json'));
+    assert.equal((await client.getUpdates())[0].title, 'Про стандартизацію');
+  } finally {
+    resetFake();
+  }
+});
+
+test('індекс: застарілий перелік перевіряється умовним запитом; на 304 не перечитується', async () => {
+  resetFake();
+  const { cfg, client } = mk();
+  const idx = new IndexStore(client, cfg);
+  assert.equal(await idx.ensure(), 'ready');
+  const docsBefore = idx.docs;
+  fs.utimesSync(idx.file, ago(8 * 86_400_000), ago(8 * 86_400_000));
+  idx._loadedAt = ago(8 * 86_400_000).getTime();
+  const n0 = fake.requests.length;
+  assert.equal(await idx.ensure(), 'ready', 'старий індекс доступний, поки йде перевірка');
+  if (idx._building) await idx._building;
+  const reqs = fake.requests.slice(n0);
+  assert.deepEqual(reqs.map((r) => r.path), ['/ogd/zak/laws/data/csv/doc.txt']);
+  assert.ok(reqs[0].inm);
+  assert.equal(idx.docs, docsBefore, 'той самий індекс у пам\'яті');
+  assert.ok(idx._fileAge() < 60_000, 'строк локальної копії подовжено');
+  assert.ok(Date.now() - idx._loadedAt < 60_000);
 });

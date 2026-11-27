@@ -1,4 +1,7 @@
-// Імітація порталу data.rada.gov.ua для тестів. Дані вигадані (тестові), а не тексти реальних актів.
+// Імітація порталу data.rada.gov.ua для тестів.
+// Тексти актів вигадані (тестові). Картка 1315-18 — справжня, отримана з порталу (test/fixtures).
+import crypto from 'node:crypto';
+import fs from 'node:fs';
 import http from 'node:http';
 import zlib from 'node:zlib';
 import { decodeCp1251Fallback } from '../src/cp1251.js';
@@ -29,25 +32,11 @@ export const DOC_TXT = [
 
 export const TYP_TXT = '1\tЗакон\r\n3\tКонституція\r\n5\tПостанова\r\n7\tКодекс\r\n';
 export const ORGANS_TXT = '1\tВерховна Рада України\r\n2\tКабінет Міністрів України\r\n';
+// Фрагмент довідника видань pubs.txt (коди, що трапляються в полі publics картки).
+export const PUBS_TXT = "1\tВідомості Верховної Ради України\r\n8\tГолос України\r\n9\tУрядовий кур'єр\r\n19\tОфіційний вісник України\r\n";
 
-export const CARD_1315 = {
-  nreg: '1315-18',
-  nazva: 'Про стандартизацію',
-  status: 5,
-  orgdat: 20140605,
-  orgnum: '1315-VII',
-  poddat: 20250828,
-  pridat: 20250828,
-  pidstava: '4196-20',
-  eds: [
-    { datred: 20150103, pidstava: null },
-    { datred: 20200419, pidstava: '114-IX' },
-    { datred: 20250828, pidstava: '4196-20' },
-    { datred: 30000101, pidstava: '3153-20' },
-  ],
-  types: '1',
-  org: 1,
-};
+/** Справжня картка /laws/card/1315-18.json (is_archive, eds[].comment, hist[].comments, publics, anots, projs). */
+export const CARD_1315 = JSON.parse(fs.readFileSync(new URL('./fixtures/1315-18.card.json', import.meta.url), 'utf8'));
 
 export const CARD_CONST = {
   nreg: '254к/96-вр',
@@ -100,10 +89,25 @@ export const R_TSV = [
 
 export function startFakeRada({ gzip = true } = {}) {
   const requests = [];
+  // Змінний стан для тестів: вміст файлів, кодування стрічки оновлень, ETag і Last-Modified.
+  const state = {
+    docTxt: DOC_TXT,
+    rTsv: R_TSV,
+    rTsvCharset: 'utf-8', // 'utf-8' | 'widows-1251' (так пише портал) | null — без charset
+    etag: true,
+    lastModified: new Date('2026-07-27T07:57:35Z'),
+  };
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://x');
     const p = decodeURIComponent(url.pathname);
-    requests.push({ path: p, query: url.search, ua: req.headers['user-agent'], at: Date.now() });
+    requests.push({
+      path: p,
+      query: url.search,
+      ua: req.headers['user-agent'],
+      inm: req.headers['if-none-match'],
+      ims: req.headers['if-modified-since'],
+      at: Date.now(),
+    });
 
     const send = (status, body, type = 'text/plain; charset=utf-8', extra = {}) => {
       let buf = Buffer.isBuffer(body) ? body : Buffer.from(body, 'utf8');
@@ -117,6 +121,24 @@ export function startFakeRada({ gzip = true } = {}) {
       res.end(buf);
     };
 
+    // Великі файли й довідники: ETag / Last-Modified і відповідь 304 на умовний запит.
+    const sendConditional = (body, type) => {
+      const buf = Buffer.isBuffer(body) ? body : Buffer.from(body, 'utf8');
+      const etag = `"${crypto.createHash('md5').update(buf).digest('hex').slice(0, 12)}"`;
+      const extra = { 'Last-Modified': state.lastModified.toUTCString() };
+      if (state.etag) extra.ETag = etag;
+      const inm = req.headers['if-none-match'];
+      const ims = req.headers['if-modified-since'];
+      let notModified = false;
+      if (inm && state.etag) notModified = inm === etag;
+      else if (ims) notModified = new Date(ims).getTime() >= state.lastModified.getTime();
+      if (notModified) {
+        res.writeHead(304, extra);
+        return res.end();
+      }
+      return send(200, buf, type, extra);
+    };
+
     if (req.headers['user-agent'] !== 'OpenData') return send(403, 'Forbidden');
 
     if (p === '/laws/card/1315-18.json') return send(200, JSON.stringify(CARD_1315), 'application/json');
@@ -126,10 +148,15 @@ export function startFakeRada({ gzip = true } = {}) {
     if (p === '/laws/show/1315-18/ed20200419.txt') return send(200, TEXT_1315_2020);
     if (p === '/laws/show/1315-18/ed20250828.txt') return send(200, TEXT_1315_CURRENT);
     if (p === '/laws/show/254к/96-вр.txt') return send(200, TEXT_CONST);
-    if (p === '/laws/main/r.tsv') return send(200, R_TSV, 'text/tab-separated-values; charset=utf-8');
-    if (p === '/ogd/zak/laws/data/csv/doc.txt') return send(200, encodeCp1251(DOC_TXT), 'text/plain; charset=windows-1251');
-    if (p === '/ogd/zak/laws/data/csv/typ.txt') return send(200, encodeCp1251(TYP_TXT), 'text/plain; charset=windows-1251');
-    if (p === '/ogd/zak/laws/data/csv/organs.txt') return send(200, encodeCp1251(ORGANS_TXT), 'text/plain; charset=windows-1251');
+    if (p === '/laws/main/r.tsv') {
+      if (state.rTsvCharset === 'widows-1251') return sendConditional(encodeCp1251(state.rTsv), 'text/plain; charset=widows-1251');
+      if (state.rTsvCharset === 'utf-8') return sendConditional(state.rTsv, 'text/tab-separated-values; charset=utf-8');
+      return sendConditional(state.rTsv, 'text/tab-separated-values');
+    }
+    if (p === '/ogd/zak/laws/data/csv/doc.txt') return sendConditional(encodeCp1251(state.docTxt), 'text/plain; charset=widows-1251');
+    if (p === '/ogd/zak/laws/data/csv/typ.txt') return sendConditional(encodeCp1251(TYP_TXT), 'text/plain; charset=widows-1251');
+    if (p === '/ogd/zak/laws/data/csv/organs.txt') return sendConditional(encodeCp1251(ORGANS_TXT), 'text/plain; charset=widows-1251');
+    if (p === '/ogd/zak/laws/data/csv/pubs.txt') return sendConditional(encodeCp1251(PUBS_TXT), 'text/plain; charset=widows-1251');
     if (p === '/laws/find/a') {
       const text = url.searchParams.get('text') || '';
       if (/стандартиз/i.test(text)) {
@@ -148,7 +175,7 @@ export function startFakeRada({ gzip = true } = {}) {
   return new Promise((resolve) => {
     server.listen(0, '127.0.0.1', () => {
       const { port } = server.address();
-      resolve({ url: `http://127.0.0.1:${port}`, requests, close: () => new Promise((r) => server.close(r)) });
+      resolve({ url: `http://127.0.0.1:${port}`, requests, state, close: () => new Promise((r) => server.close(r)) });
     });
   });
 }

@@ -36,6 +36,16 @@ export function fmtEditionDate(ymd) {
   return isUndeterminedDate(ymd) ? 'дата набрання чинності ще не визначена' : fmtDate(ymd);
 }
 
+/**
+ * Майбутня редакція для людини з коментарем із картки, напр.
+ * «з дня припинення чи скасування воєнного стану» (дата не визначена).
+ */
+export function fmtFutureEdition(e) {
+  const c = e?.comment;
+  if (isUndeterminedDate(e?.date)) return c ? `«${c}» (дата не визначена)` : fmtEditionDate(e?.date);
+  return c ? `${fmtDate(e?.date)} («${c}»)` : fmtDate(e?.date);
+}
+
 const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII', 'XIII', 'XIV', 'XV'];
 
 /**
@@ -135,14 +145,59 @@ export function safeName(s) {
   return String(s).replace(/[^A-Za-z0-9._-]/g, (c) => `_${c.codePointAt(0).toString(16)}_`);
 }
 
-/** Аналіз картки: поточна редакція, майбутні редакції, статус. */
+/** Перелік майбутніх редакцій одним рядком: «… , підстава № …; …». */
+export function futureEditionsText(list) {
+  return list.map((e) => `${fmtFutureEdition(e)}${e.basis ? `, підстава ${basisLabel(e.basis)}` : ''}`).join('; ');
+}
+
+/** Коментар із картки без службових позначок на початку («! з дня …» → «з дня …»). */
+function cleanComment(value) {
+  if (value === undefined || value === null) return null;
+  return String(value).replace(/^[\s!]+/, '').trim() || null;
+}
+
+/** Коментар до редакції з історії: hist[].comments = { nreg_підстави: "текст" }. */
+function histComment(hist, date, basis) {
+  for (const h of hist) {
+    if (String(h?.poddat ?? '') !== date || !h.comments || typeof h.comments !== 'object') continue;
+    const c = cleanComment((basis && h.comments[basis]) ?? Object.values(h.comments)[0]);
+    if (c) return c;
+  }
+  return null;
+}
+
+/**
+ * Поле publics картки: «дата:код_видання:реквізити», записи через «|», напр.
+ * «20140801:1:2014 р., № 31, стор. 2405, стаття 1058». → [{ date, source, ref }]
+ */
+export function parsePublications(publics) {
+  return String(publics ?? '')
+    .split('|')
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .map((piece) => {
+      const m = piece.match(/^(\d{8})?:([^:]*):([\s\S]*)$/);
+      if (!m) return { date: null, source: null, ref: piece };
+      return { date: m[1] || null, source: m[2].trim() || null, ref: m[3].trim() || null };
+    });
+}
+
+/** Рядок про опублікування: «01.08.2014 — Відомості Верховної Ради України, 2014 р., № 31 …». */
+export function publicationLabel(p) {
+  const where = p.sourceName ? [p.sourceName, p.ref].filter(Boolean).join(', ') : [p.ref, p.source ? `(код видання ${p.source})` : null].filter(Boolean).join(' ');
+  return [p.date ? fmtDate(p.date) : null, where || null].filter(Boolean).join(' — ');
+}
+
+/** Аналіз картки: поточна редакція, майбутні редакції, статус, опублікування. */
 export function summarizeCard(card, { dicts = null, today = todayYmd() } = {}) {
   const eds = Array.isArray(card.eds) ? card.eds : [];
+  const hist = Array.isArray(card.hist) ? card.hist : [];
   const editions = eds
-    .map((e) => ({
-      date: String(e.datred ?? ''),
-      basis: (e.pidstava ?? '').toString().trim() || null,
-    }))
+    .map((e) => {
+      const date = String(e.datred ?? '');
+      const basis = (e.pidstava ?? '').toString().trim() || null;
+      return { date, basis, comment: cleanComment(e.comment) || histComment(hist, date, basis) };
+    })
     .filter((e) => /^\d{8}$/.test(e.date))
     .sort((a, b) => a.date.localeCompare(b.date));
   const future = editions.filter((e) => e.date > today);
@@ -155,6 +210,20 @@ export function summarizeCard(card, { dicts = null, today = todayYmd() } = {}) {
     .filter(Boolean);
   const typeLabels = dicts?.types ? typeIds.map((id) => dicts.types.get(Number(id)) || id) : [];
   const publisher = dicts?.organs && card.org ? dicts.organs.get(Number(card.org)) || null : null;
+
+  const publications = parsePublications(card.publics).map((p) => ({
+    ...p,
+    sourceName: dicts?.pubs && p.source ? dicts.pubs.get(Number(p.source)) || null : null,
+  }));
+  const anots = Array.isArray(card.anots) ? card.anots : [];
+  const englishTitle = anots.map((a) => String(a?.ann_nam ?? '').trim()).find(Boolean) || null;
+  const bills = (Array.isArray(card.projs) ? card.projs : [])
+    .map((p) => ({
+      number: String(p?.proj_num ?? '').trim(),
+      date: String(p?.proj_dat ?? '').trim() || null,
+      title: String(p?.proj_nam ?? '').trim() || null,
+    }))
+    .filter((b) => b.number && b.number !== '0');
 
   return {
     nreg: card.nreg,
@@ -170,7 +239,11 @@ export function summarizeCard(card, { dicts = null, today = todayYmd() } = {}) {
     types: typeLabels,
     publisher,
     minjust: (card.minjust ?? '').toString().trim() || null,
-    isArchive: card.isArchive === true,
+    englishTitle,
+    bills,
+    publications,
+    // Портал віддає «is_archive»: 0 | 1.
+    isArchive: Number(card.is_archive) === 1,
     link: siteLink(card.nreg, current),
   };
 }
@@ -184,29 +257,33 @@ export function cardToText(s) {
   if (s.publisher) lines.push(`Видавник: ${s.publisher}`);
   const adopted = [s.adopted ? `від ${fmtDate(s.adopted)}` : null, s.number ? `№ ${s.number}` : null].filter(Boolean);
   if (adopted.length) lines.push(`Реквізити: ${adopted.join(' ')}`);
+  if (s.englishTitle) lines.push(`Назва англійською: ${s.englishTitle}`);
+  if (s.bills.length) lines.push(`Законопроєкт: ${s.bills.map((b) => `№ ${b.number}${b.date ? ` від ${fmtDate(b.date)}` : ''}`).join('; ')}`);
   if (s.minjust) lines.push(`Реєстрація в Мін'юсті: ${s.minjust}`);
+  if (s.publications.length) {
+    lines.push('Офіційне опублікування:');
+    for (const p of s.publications) lines.push(`  • ${publicationLabel(p)}`);
+  }
   if (s.currentEdition) {
     let line = `Поточна редакція: від ${fmtDate(s.currentEdition)}`;
     if (s.currentBasis) line += `, підстава ${basisLabel(s.currentBasis)}`;
     lines.push(line);
   }
   if (s.futureEditions.length) {
-    lines.push(
-      `Майбутні редакції (ще не набрали чинності): ${s.futureEditions
-        .map((e) => `${fmtEditionDate(e.date)}${e.basis ? ` — підстава ${basisLabel(e.basis)}` : ''}`)
-        .join('; ')}`,
-    );
+    lines.push(`Майбутні редакції (ще не набрали чинності): ${futureEditionsText(s.futureEditions)}`);
   } else {
     lines.push('Майбутні редакції: не зазначено в картці');
   }
-  if (s.isArchive) lines.push('Увага: це архівна копія документа.');
+  if (s.isArchive) lines.push('Увага: картка позначена як архівна копія документа.');
   if (/\(редакц[іїя][^)]*до\s/i.test(s.title)) {
     lines.push('Увага: схоже, це архівна редакція кодексу («редакції до …»), а не чинний текст.');
   }
   const last = s.editions.slice(-12);
   lines.push(`Редакцій у картці: ${s.editions.length}${s.editions.length > last.length ? ` (показано останні ${last.length})` : ''}`);
   for (const e of last) {
-    lines.push(`  • ${s.futureEditions.includes(e) ? fmtEditionDate(e.date) : fmtDate(e.date)}${e.basis ? ` — підстава ${basisLabel(e.basis)}` : ''}${e.date === s.currentEdition ? ' ← поточна' : ''}${s.futureEditions.includes(e) ? ' ← майбутня' : ''}`);
+    const future = s.futureEditions.includes(e);
+    const when = future ? fmtFutureEdition(e) : `${fmtDate(e.date)}${e.comment ? ` («${e.comment}»)` : ''}`;
+    lines.push(`  • ${when}${e.basis ? ` — підстава ${basisLabel(e.basis)}` : ''}${e.date === s.currentEdition ? ' ← поточна' : ''}${future ? ' ← майбутня' : ''}`);
   }
   lines.push(`Офіційний текст поточної редакції: ${s.link}`);
   return lines.join('\n');

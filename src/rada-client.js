@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { USER_AGENT } from './config.js';
 import { httpGet } from './http.js';
-import { decodeCp1251 } from './cp1251.js';
+import { decodeCp1251, decodeText } from './cp1251.js';
 import { encodeNregPath, safeName, todayYmd } from './format.js';
 
 export class RadaError extends Error {
@@ -121,7 +121,11 @@ export class RadaClient {
     return run;
   }
 
-  async _fetch(pathname, { followRedirects = true } = {}) {
+  /**
+   * Один запит до порталу. Додаткові заголовки (умовні If-None-Match / If-Modified-Since)
+   * дозволені, але User-Agent завжди рівно «OpenData».
+   */
+  async _fetch(pathname, { followRedirects = true, headers = {} } = {}) {
     return this._enqueue(async () => {
       this._rollDay();
       if (Date.now() < this._cooldownUntil) {
@@ -142,7 +146,7 @@ export class RadaClient {
       this.log(`GET ${url}`);
       let res;
       try {
-        res = await httpGet(url, { headers: { 'User-Agent': USER_AGENT }, timeoutMs: this.cfg.timeoutMs });
+        res = await httpGet(url, { headers: { ...headers, 'User-Agent': USER_AGENT }, timeoutMs: this.cfg.timeoutMs });
       } catch (err) {
         this.usage.requests += 1;
         this._saveUsage();
@@ -167,6 +171,7 @@ export class RadaClient {
           403,
         );
       }
+      if (res.status === 304) return res; // не змінилося — візьмемо з кешу
       if (res.status >= 300 && res.status < 400) {
         const loc = res.headers.location;
         if (!followRedirects || !loc) return res;
@@ -213,9 +218,65 @@ export class RadaClient {
   _writeCached(file, data) {
     try {
       writeFileAtomic(file, data);
+      return true;
     } catch (err) {
       this.log(`cache write failed: ${err.message}`);
+      return false;
     }
+  }
+
+  /**
+   * Файл із кешем і умовним запитом. Поки кеш свіжий (ttlMs) — портал не запитуємо.
+   * Коли застарів — запитуємо з If-None-Match / If-Modified-Since (ETag і Last-Modified
+   * зберігаються поруч у *.meta.json); на 304 «не змінилося» беремо кеш і подовжуємо його строк.
+   * Так великі файли (doc.txt ~52 МБ, довідники, r.tsv) не завантажуються повторно без потреби.
+   */
+  async _getConditional(pathname, file, ttlMs) {
+    const metaFile = `${file}.meta.json`;
+    let cached = null;
+    let ageMs = Infinity;
+    try {
+      const st = fs.statSync(file);
+      ageMs = Date.now() - st.mtimeMs;
+      cached = fs.readFileSync(file);
+    } catch {
+      cached = null;
+    }
+    const meta = cached ? readJson(metaFile) || {} : {};
+    // ttlMs <= 0 — завжди перевіряти на порталі (вік щойно записаного файлу може бути навіть від'ємним).
+    if (cached && ttlMs > 0 && ageMs < ttlMs) {
+      return { body: cached, contentType: meta.contentType || null, fromCache: true, notModified: false };
+    }
+    const headers = {};
+    if (cached && meta.etag) headers['If-None-Match'] = meta.etag;
+    if (cached && meta.lastModified) headers['If-Modified-Since'] = meta.lastModified;
+    const res = await this._get(pathname, { headers });
+    if (res.status === 304) {
+      if (!cached) throw new RadaError('http', 'Портал відповів 304 без збереженої копії.', 304);
+      try {
+        const now = new Date();
+        fs.utimesSync(file, now, now); // кеш знову свіжий
+      } catch {
+        /* не критично */
+      }
+      return { body: cached, contentType: meta.contentType || null, fromCache: true, notModified: true };
+    }
+    const contentType = String(res.headers['content-type'] || '') || null;
+    try {
+      fs.unlinkSync(metaFile); // старий ETag не повинен залишитися при нових даних
+    } catch {
+      /* не було */
+    }
+    if (this._writeCached(file, res.body)) {
+      const next = {
+        etag: res.headers.etag || null,
+        lastModified: res.headers['last-modified'] || null,
+        contentType,
+        savedAt: new Date().toISOString(),
+      };
+      this._writeCached(metaFile, JSON.stringify(next));
+    }
+    return { body: res.body, contentType, fromCache: false, notModified: false };
   }
 
   // ---------- кінцеві точки ----------
@@ -296,15 +357,9 @@ export class RadaClient {
 
   /** Стрічка оновлених документів: /laws/main/r.tsv */
   async getUpdates() {
-    const file = this._cachePath('updates.tsv');
-    let buf = this._readCached(file, this.cfg.updatesTtlMs);
-    if (!buf) {
-      const res = await this._get('/laws/main/r.tsv');
-      buf = res.body;
-      this._writeCached(file, buf);
-    }
-    let text = buf.toString('utf8');
-    if (text.includes('�')) text = decodeCp1251(buf);
+    const r = await this._getConditional('/laws/main/r.tsv', this._cachePath('updates.tsv'), this.cfg.updatesTtlMs);
+    // Кодування — за Content-Type (для копії з кешу — збереженим); евристика лише як запасна.
+    const text = decodeText(r.body, r.contentType);
     // Колонки: num, card (опис: видавник; вид від дата), nazva, status, publics, link, size, file.
     // Код документа (nreg) беремо з посилання: у колонці card — опис, а не код.
     const rows = [];
@@ -322,16 +377,10 @@ export class RadaClient {
     return rows;
   }
 
-  /** Довідник (typ, organs, stan) як Map id → назва. Кешується на 30 днів. */
+  /** Довідник (typ, organs, pubs, stan) як Map id → назва. Кеш 30 днів, далі — умовний запит. */
   async getDict(name) {
     if (this._memo.has(`dict:${name}`)) return this._memo.get(`dict:${name}`);
-    const file = this._cachePath('dicts', `${name}.txt`);
-    let buf = this._readCached(file, this.cfg.dictTtlMs);
-    if (!buf) {
-      const res = await this._get(`/ogd/zak/laws/data/csv/${name}.txt`);
-      buf = res.body;
-      this._writeCached(file, buf);
-    }
+    const { body: buf } = await this._getConditional(`/ogd/zak/laws/data/csv/${name}.txt`, this._cachePath('dicts', `${name}.txt`), this.cfg.dictTtlMs);
     const map = new Map();
     for (const line of decodeCp1251(buf).split(/\r?\n/)) {
       const i = line.indexOf('\t');
@@ -344,27 +393,37 @@ export class RadaClient {
     return map;
   }
 
-  /** Довідники видів і видавників; якщо недоступні — повертає null (не критично). */
+  /**
+   * Довідники видів, видавників і видань (pubs — коди видань у полі publics картки).
+   * Якщо видів і видавників немає — null; без довідника видань картка покаже коди.
+   */
   async getDicts() {
+    let types;
+    let organs;
     try {
-      const types = await this.getDict('typ');
-      const organs = await this.getDict('organs');
-      return { types, organs };
+      types = await this.getDict('typ');
+      organs = await this.getDict('organs');
     } catch (err) {
       this.log(`dicts unavailable: ${err.message}`);
       return null;
     }
+    let pubs = null;
+    try {
+      pubs = await this.getDict('pubs');
+    } catch (err) {
+      this.log(`pubs dict unavailable: ${err.message}`);
+    }
+    return { types, organs, pubs };
   }
 
-  /** Повний перелік карток (doc.txt, ~52 МБ) — для локального пошуку за назвою. */
+  /**
+   * Повний перелік карток (doc.txt, ~52 МБ) — для локального пошуку за назвою.
+   * Викликається, коли локальна копія застаріла: умовний запит, на 304 — наявна копія.
+   * Повертає { body, notModified }.
+   */
   async downloadDump(targetFile) {
-    const res = await this._get('/ogd/zak/laws/data/csv/doc.txt');
-    try {
-      writeFileAtomic(targetFile, res.body);
-    } catch (err) {
-      this.log(`dump not cached: ${err.message}`);
-    }
-    return res.body;
+    const r = await this._getConditional('/ogd/zak/laws/data/csv/doc.txt', targetFile, 0);
+    return { body: r.body, notModified: r.notModified };
   }
 
   /** Офіційний пошук за назвою: /laws/find/a?text=… (перенаправлення = однозначний збіг). */

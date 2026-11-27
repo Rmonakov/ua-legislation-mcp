@@ -91,8 +91,16 @@ export class IndexStore {
     if (this._failedAt && Date.now() - this._failedAt < 30 * 60_000) return Promise.resolve();
     this._building = (async () => {
       try {
-        const buf = await this.client.downloadDump(this.file);
-        this._load(buf);
+        const r = await this.client.downloadDump(this.file);
+        const buf = Buffer.isBuffer(r) ? r : r.body;
+        if (r.notModified && this.docs) {
+          // Портал відповів «не змінилося» (304): індекс у пам'яті актуальний, перечитувати 50 МБ не треба.
+          this.loadedFrom = new Date();
+          this._loadedAt = this.loadedFrom.getTime();
+          this.log('index not modified (304)');
+        } else {
+          this._load(buf);
+        }
         this.lastError = null;
         this._failedAt = 0;
       } catch (err) {

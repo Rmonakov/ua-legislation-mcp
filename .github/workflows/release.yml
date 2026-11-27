@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Версія з package.json збігається з тегом; manifest.json оновлюється з неї
+        run: node scripts/sync-version.mjs --expect "${GITHUB_REF_NAME#v}"
       - uses: actions/setup-node@v4
         with:
           node-version: 22

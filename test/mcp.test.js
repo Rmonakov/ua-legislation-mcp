@@ -45,16 +45,23 @@ test('stdio: інструменти, інструкції й робочі вик
     const ct = text(card);
     assert.match(ct, /Статус: Чинний/);
     assert.match(ct, /Поточна редакція: від 28\.08\.2025, підстава № 4196-IX \(nreg 4196-20\)/);
-    assert.match(ct, /Майбутні редакції \(ще не набрали чинності\): дата набрання чинності ще не визначена — підстава № 3153-IX \(nreg 3153-20\)/);
+    assert.match(ct, /Майбутні редакції \(ще не набрали чинності\): «з дня припинення чи скасування воєнного стану» \(дата не визначена\), підстава № 3153-IX \(nreg 3153-20\)/);
     assert.doesNotMatch(ct, /3000/);
     assert.doesNotMatch(ct, /Дата набрання чинності поточною редакцією/);
     assert.match(ct, /Вид: Закон/);
+    // справжня картка: is_archive = 0, опублікування з довідника видань, англійська назва, законопроєкт
+    assert.doesNotMatch(ct, /архівна копія/);
+    assert.match(ct, /Офіційне опублікування:\n  • 03\.07\.2014 — Голос України, № 124\n/);
+    assert.match(ct, /  • 01\.08\.2014 — Відомості Верховної Ради України, 2014 р\., № 31, стор\. 2405, стаття 1058/);
+    assert.match(ct, /Назва англійською: On Standardization/);
+    assert.match(ct, /Законопроєкт: № 4585 від 27\.03\.2014/);
 
     const art = await client.callTool({ name: 'get_act_text', arguments: { nreg: '1315-18', article: '23' } });
     const at = text(art);
     assert.match(at, /Редакція від 28\.08\.2025/);
     assert.match(at, /Офіційний текст: https:\/\/zakon\.rada\.gov\.ua\/laws\/show\/1315-18\/ed20250828/);
-    assert.match(at, /Увага: є майбутні редакції — дата набрання чинності ще не визначена \(підстава № 3153-IX/);
+    assert.match(at, /Увага: є майбутні редакції — «з дня припинення чи скасування воєнного стану» \(дата не визначена\), підстава № 3153-IX \(nreg 3153-20\)\. Перевірте/);
+    assert.doesNotMatch(at, /архівна копія/);
     assert.match(at, /Стаття 23\. Тестова стаття[\s\S]*добровільно/);
     assert.doesNotMatch(at, /Стаття 24/);
 
@@ -76,6 +83,7 @@ test('stdio: інструменти, інструкції й робочі вик
     assert.match(kt, /змінилось: 1/);
     assert.match(kt, /ЗМІНИЛОСЬ: у документі редакція від 19\.04\.2020, поточна — від 28\.08\.2025/);
     assert.match(kt, /Конституція України[\s\S]*= поточна/);
+    assert.match(kt, /Майбутні редакції: «з дня припинення чи скасування воєнного стану» \(дата не визначена\), підстава № 3153-IX/);
 
     const upd = await client.callTool({ name: 'list_recent_updates', arguments: { nregs: ['1315-18'] } });
     assert.match(text(upd), /Про стандартизацію — Верховна Рада України; Закон від 05\.06\.2014 № 1315-VII\n   nreg 1315-18 \| Чинний \| редакція від 28\.08\.2025/);
@@ -139,6 +147,7 @@ test('HTTP (для ChatGPT): секретний шлях, search/fetch, стан
     assert.match(f.structuredContent.text, /обов'язково/);
     assert.equal(f.structuredContent.url, 'https://zakon.rada.gov.ua/laws/show/1315-18/ed20200419');
     assert.equal(f.structuredContent.metadata.future_editions, '30000101');
+    assert.equal(f.structuredContent.metadata.future_editions_text, '«з дня припинення чи скасування воєнного стану» (дата не визначена), підстава № 3153-IX (nreg 3153-20)');
     await client.close();
 
     // Bearer-токен на /mcp теж приймається

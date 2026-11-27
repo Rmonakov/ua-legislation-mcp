@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { VERSION } from './config.js';
 import { RadaError } from './rada-client.js';
-import { basisLabel, cardToText, fmtDate, fmtEditionDate, normalizeEdition, parseDocRef, siteLink, statusLabel, summarizeCard, todayYmd } from './format.js';
+import { basisLabel, cardToText, fmtDate, futureEditionsText, normalizeEdition, parseDocRef, siteLink, statusLabel, summarizeCard, todayYmd } from './format.js';
 import { extractArticle, findInText, outline, page } from './text.js';
 
 export const SERVER_INSTRUCTIONS = `Сервер дає доступ до офіційної бази «Законодавство України» Верховної Ради України через портал відкритих даних data.rada.gov.ua.
@@ -57,8 +57,9 @@ function textHeader(summary, edition) {
     `Офіційний текст: ${siteLink(summary.nreg, edition)}`,
   ];
   if (summary.futureEditions.length && !edNote.includes('майбутня')) {
-    lines.push(`Увага: є майбутні редакції — ${summary.futureEditions.map((e) => `${fmtEditionDate(e.date)}${e.basis ? ` (підстава ${basisLabel(e.basis)})` : ''}`).join('; ')}. Перевірте, чи стосуються вони потрібних норм.`);
+    lines.push(`Увага: є майбутні редакції — ${futureEditionsText(summary.futureEditions)}. Перевірте, чи стосуються вони потрібних норм.`);
   }
+  if (summary.isArchive) lines.push('Увага: картка позначена як архівна копія документа.');
   lines.push('Джерело: офіційна база «Законодавство України» (портал відкритих даних ВРУ, data.rada.gov.ua)');
   return lines.join('\n');
 }
@@ -118,8 +119,9 @@ export function createMcpServer({ client, index, compat = false }) {
     {
       title: 'Картка акта і редакції',
       description:
-        'Повертає картку документа: назву, статус (чинний / втратив чинність / не набрав чинності), реквізити, дату поточної редакції, ' +
-        'майбутні редакції та історію редакцій з підставами. Використовуй перед будь-яким висновком щодо чинності норми.',
+        'Повертає картку документа: назву, статус (чинний / втратив чинність / не набрав чинності), реквізити, офіційне опублікування, ' +
+        'законопроєкт, дату поточної редакції, майбутні редакції (з умовою набрання чинності, якщо дати немає) та історію редакцій з підставами. ' +
+        'Використовуй перед будь-яким висновком щодо чинності норми.',
       inputSchema: {
         nreg: z.string().min(1).describe('Код документа nreg (напр. 1315-18, 254к/96-вр, 1178-2022-п) або посилання zakon.rada.gov.ua'),
       },
@@ -247,7 +249,7 @@ export function createMcpServer({ client, index, compat = false }) {
             } else {
               lines.push(`   Поточна редакція: від ${fmtDate(s.currentEdition)}`);
             }
-            if (s.futureEditions.length) lines.push(`   Майбутні редакції: ${s.futureEditions.map((e) => `${fmtEditionDate(e.date)}${e.basis ? ` (підстава ${basisLabel(e.basis)})` : ''}`).join('; ')}`);
+            if (s.futureEditions.length) lines.push(`   Майбутні редакції: ${futureEditionsText(s.futureEditions)}`);
             lines.push(`   ${s.link}`);
             out.push(lines.join('\n'));
           } catch (err) {
@@ -377,6 +379,7 @@ export function createMcpServer({ client, index, compat = false }) {
               status: s.status.label,
               edition: edition || '',
               future_editions: s.futureEditions.map((e) => e.date).join(','),
+              future_editions_text: futureEditionsText(s.futureEditions),
               source: 'Законодавство України (data.rada.gov.ua)',
             },
           });

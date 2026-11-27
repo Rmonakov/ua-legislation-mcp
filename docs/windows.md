@@ -109,7 +109,7 @@ npx.cmd -y github:Rmonakov/ua-legislation-mcp --http --port 8787 --secret $s
 Очікувано:
 
 ```
-ua-legislation-mcp 0.1.2: HTTP-сервер запущено.
+ua-legislation-mcp 0.1.3: HTTP-сервер запущено.
   MCP: http://127.0.0.1:8787/mcp/<секрет>
   Стан: http://127.0.0.1:8787/health
 ```
