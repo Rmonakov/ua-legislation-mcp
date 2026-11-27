@@ -248,7 +248,7 @@ npx @anthropic-ai/mcpb pack . dist/ua-legislation-mcp.mcpb   # пакет для
 
 Структура: `src/rada-client.js` — клієнт порталу (черга, паузи, ліміти, кеш); `src/index-store.js` — локальний пошук за офіційним переліком документів; `src/text.js` — статті, пошук, зміст; `src/server.js` — інструменти MCP; `bin/cli.js` — запуск у режимах stdio та HTTP. Тести працюють на імітації порталу й до справжнього порталу не звертаються; тексти актів у них вигадані, а картка `test/fixtures/1315-18.card.json` — справжня, отримана з порталу.
 
-Пропозиції й виправлення — через issues і pull requests.
+План розвитку: [ROADMAP.md](ROADMAP.md). Пропозиції й виправлення — через issues і pull requests.
 
 ## Подяки
 
