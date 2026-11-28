@@ -9,3 +9,6 @@
 /.gitignore
 /.mcpbignore
 /package-lock.json
+/CLAUDE.md
+/ROADMAP.md
+/private/
